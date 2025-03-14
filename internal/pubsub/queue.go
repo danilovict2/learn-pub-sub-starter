@@ -2,8 +2,10 @@ package pubsub
 
 import amqp "github.com/rabbitmq/amqp091-go"
 
+type SimpleQueueType int
+
 const (
-	Transient int = iota
+	Transient SimpleQueueType = iota
 	Durable
 )
 
@@ -12,7 +14,7 @@ func DeclareAndBind(
 	exchange,
 	queueName,
 	key string,
-	simpleQueueType int,
+	simpleQueueType SimpleQueueType,
 ) (*amqp.Channel, amqp.Queue, error) {
 	ch, err := conn.Channel()
 	if err != nil {

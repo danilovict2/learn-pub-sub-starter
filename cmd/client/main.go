@@ -25,12 +25,18 @@ func main() {
 		log.Fatal(err)
 	}
 
-	_, _, err = pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, "pause." + username, routing.PauseKey, pubsub.Transient)
+	_, _, err = pubsub.DeclareAndBind(conn, routing.ExchangePerilDirect, "pause."+username, routing.PauseKey, pubsub.Transient)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	gameState := gamelogic.NewGameState(username)
+
+	err = pubsub.SubscribeJSON(conn, string(routing.ExchangePerilDirect), "pause."+username, string(routing.PauseKey), pubsub.Transient, handlerPause(gameState))
+	if err != nil {
+		log.Fatal(err)
+	}
+
 Loop:
 	for {
 		words := gamelogic.GetInput()
@@ -61,7 +67,14 @@ Loop:
 			break Loop
 		default:
 			log.Println("Don't understand the command:", words[0])
-		
+
 		}
+	}
+}
+
+func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
+	defer fmt.Print("> ")
+	return func(ps routing.PlayingState) {
+		gs.HandlePause(ps)
 	}
 }
