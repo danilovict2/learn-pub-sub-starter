@@ -27,7 +27,7 @@ func SubscribeJSON[T any](
 	go func() {
 		for data := range delivery {
 			var raw T
-			json.Unmarshal(data.Body, raw)
+			json.Unmarshal(data.Body, &raw)
 			handler(raw)
 			data.Ack(false)
 		}
