@@ -32,7 +32,12 @@ func main() {
 
 	gameState := gamelogic.NewGameState(username)
 
-	err = pubsub.SubscribeJSON(conn, string(routing.ExchangePerilDirect), "pause."+username, string(routing.PauseKey), pubsub.Transient, handlerPause(gameState))
+	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilDirect, "pause."+username, routing.PauseKey, pubsub.Transient, handlerPause(gameState))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, "army_moves."+username, "army_moves.*", pubsub.Transient, handlerMove(gameState))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -53,9 +58,14 @@ Loop:
 
 		case "move":
 			log.Println("Moving Units")
-			if _, err := gameState.CommandMove(words); err != nil {
+			move, err := gameState.CommandMove(words)
+			if err != nil {
 				log.Fatal(err)
 			}
+
+			publishMove(conn, move, username)
+			
+			log.Println("Move published successfully")
 		case "status":
 			gameState.CommandStatus()
 		case "help":
@@ -73,8 +83,26 @@ Loop:
 }
 
 func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) {
-	defer fmt.Print("> ")
 	return func(ps routing.PlayingState) {
+		defer fmt.Print("> ")
 		gs.HandlePause(ps)
+	}
+}
+
+func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) {
+	return func(move gamelogic.ArmyMove) {
+		defer fmt.Print("> ")
+		gs.HandleMove(move)
+	}
+}
+
+func publishMove(conn *amqp.Connection, move gamelogic.ArmyMove, username string) {
+	ampqChan, err := conn.Channel()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := pubsub.PublishJSON(ampqChan, routing.ExchangePerilTopic, routing.ArmyMovesPrefix+"."+username, move); err != nil {
+		log.Fatal(err)
 	}
 }
