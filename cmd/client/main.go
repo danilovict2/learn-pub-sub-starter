@@ -20,6 +20,11 @@ func main() {
 
 	fmt.Println("Peril game client connected to RabbitMQ!")
 
+	ch, err := conn.Channel()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	username, err := gamelogic.ClientWelcome()
 	if err != nil {
 		log.Fatal(err)
@@ -37,7 +42,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, "army_moves."+username, "army_moves.*", pubsub.Transient, handlerMove(gameState))
+	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, "army_moves."+username, "army_moves.*", pubsub.Transient, handlerMove(gameState, ch))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -96,16 +101,26 @@ func handlerPause(gs *gamelogic.GameState) func(routing.PlayingState) pubsub.Ack
 	}
 }
 
-func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) pubsub.AckType {
+func handlerMove(gs *gamelogic.GameState, ch *amqp.Channel) func(gamelogic.ArmyMove) pubsub.AckType {
 	return func(move gamelogic.ArmyMove) pubsub.AckType {
 		defer fmt.Print("> ")
 		outcome := gs.HandleMove(move)
 
-		if outcome == gamelogic.MoveOutComeSafe || outcome == gamelogic.MoveOutcomeMakeWar {
+		switch outcome{
+		case gamelogic.MoveOutComeSafe:
 			return pubsub.Ack
-		}
+		case gamelogic.MoveOutcomeMakeWar:
+			if err := pubsub.PublishJSON(ch, routing.ExchangePerilTopic, routing.ArmyMovesPrefix+"."+gs.GetUsername(), gamelogic.RecognitionOfWar{
+				Attacker: move.Player,
+				Defender: gs.GetPlayerSnap(),
+			}); err != nil {
+				return pubsub.NackRequeue
+			}
 
-		return pubsub.NackDiscard
+			return pubsub.Ack
+		default:
+			return pubsub.NackDiscard
+		}
 	}
 }
 
