@@ -42,6 +42,11 @@ func main() {
 		log.Fatal(err)
 	}
 
+	err = pubsub.SubscribeJSON(conn, routing.ExchangePerilTopic, "war", "army_moves.*", pubsub.Durable, hadlerWar(gameState))
+	if err != nil {
+		log.Fatal(err)
+	}
+
 Loop:
 	for {
 		words := gamelogic.GetInput()
@@ -64,7 +69,7 @@ Loop:
 			}
 
 			publishMove(conn, move, username)
-			
+
 			log.Println("Move published successfully")
 		case "status":
 			gameState.CommandStatus()
@@ -95,12 +100,30 @@ func handlerMove(gs *gamelogic.GameState) func(gamelogic.ArmyMove) pubsub.AckTyp
 	return func(move gamelogic.ArmyMove) pubsub.AckType {
 		defer fmt.Print("> ")
 		outcome := gs.HandleMove(move)
-		
+
 		if outcome == gamelogic.MoveOutComeSafe || outcome == gamelogic.MoveOutcomeMakeWar {
 			return pubsub.Ack
 		}
 
 		return pubsub.NackDiscard
+	}
+}
+
+func hadlerWar(gs *gamelogic.GameState) func(gamelogic.RecognitionOfWar) pubsub.AckType {
+	return func(row gamelogic.RecognitionOfWar) pubsub.AckType {
+		defer fmt.Print("> ")
+		outcome, _, _ := gs.HandleWar(row)
+		switch outcome {
+		case gamelogic.WarOutcomeNotInvolved:
+			return pubsub.NackRequeue
+		case gamelogic.WarOutcomeNoUnits:
+			return pubsub.NackDiscard
+		case gamelogic.WarOutcomeOpponentWon, gamelogic.WarOutcomeYouWon, gamelogic.WarOutcomeDraw:
+			return pubsub.Ack
+		default:
+			log.Println("Unrecognized outcome:", outcome)
+			return pubsub.NackDiscard
+		}
 	}
 }
 
